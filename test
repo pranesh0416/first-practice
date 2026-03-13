@@ -1,0 +1,81 @@
+ pipeline {
+    agent any
+
+    stages {
+
+        stage('Build') {
+            steps {
+                git 'https://github.com/akshu20791/addressbook-cicd-project'
+            }
+        }
+stage('compile'){
+        steps{
+            echo "this is where the compilation happens"
+            bat 'mvn compile'
+        }
+    }
+    stage ('CodeReview')
+        {
+            steps{ 
+             bat  'mvn pmd:pmd'      
+            }
+            post{
+                success{
+                    recordIssues(tools: [pmdParser(pattern: '**/pmd.xml')])
+                }
+            }
+        }
+        stage ('Test')
+        {
+            steps{   
+             bat 'mvn test'  
+            }
+        post{
+            success{
+                junit 'target/surefire-reports/*.xml'
+            }
+        }
+        }
+
+        stage('sonar scanner') {
+            steps {
+                withSonarQubeEnv('sqid') {
+                    sh 'mvn clean verify sonar:sonar'
+                }
+            }
+        }
+
+        stage('quality test') {
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('package') {
+            steps {
+                sh 'mvn package'
+            }
+        }
+
+        stage('deploy') {
+            steps {
+                sh "sudo mv ${WORKSPACE}/target/addressbook.war /home/ubuntu/apache-tomcat-9.0.115/webapps"
+            }
+        }
+
+    }
+ post {
+    always {
+        emailext(
+            subject: "Status and details of the build",
+            body: """Build ${currentBuild.currentResult}
+            Build URL: ${env.BUILD_URL},
+            Job Name: ${env.JOB_NAME},
+            Build Number: ${env.BUILD_NUMBER},
+            Timestamp: ${new Date()}""",
+            to: "pranesh0416@gmail.com"
+        )
+    }
+}
